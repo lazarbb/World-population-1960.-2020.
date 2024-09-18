@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>World Population Map</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        #map {
+            width: 100%;
+            height: 600px;
+        }
+        .tooltip {
+            position: absolute;
+            text-align: center;
+            padding: 4px;
+            background: lightgrey;
+            border: 0px;
+            border-radius: 8px;
+            pointer-events: none;
+            opacity: 0;
+        }
+        .slider-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+        }
+        .legend-container {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 20px;
+            width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .legend-item {
+            text-align: center;
+        }
+        .color-box {
+            width: 30px;
+            height: 20px;
+            border: 1px solid #000;
+        }
+    </style>
+</head>
+<body>
+    <h1 style="text-align: center;">WORLD POPULATION MAP</h1>
+
+    <div class="slider-container">
+        <input type="range" id="year-slider" min="1960" max="2020" value="2000" step="1">
+        <span id="year-display">2000</span>
+    </div>
+
+    <div id="map"></div>
+    <div class="tooltip"></div>
+
+    <!-- Legend -->
+    <div class="legend-container">
+        <div class="legend-item">
+            <div class="color-box" style="background-color: #f7fbff;"></div>
+            <span>0 - 10M</span>
+        </div>
+        <div class="legend-item">
+            <div class="color-box" style="background-color: #deebf7;"></div>
+            <span>10M - 50M</span>
+        </div>
+        <div class="legend-item">
+            <div class="color-box" style="background-color: #c6dbef;"></div>
+            <span>50M - 100M</span>
+        </div>
+        <div class="legend-item">
+            <div class="color-box" style="background-color: #9ecae1;"></div>
+            <span>100M - 200M</span>
+        </div>
+        <div class="legend-item">
+            <div class="color-box" style="background-color: #6baed6;"></div>
+            <span>200M - 500M</span>
+        </div>
+        <div class="legend-item">
+            <div class="color-box" style="background-color: #4292c6;"></div>
+            <span>500M - 1B</span>
+        </div>
+        <div class="legend-item">
+            <div class="color-box" style="background-color: #2171b5;"></div>
+            <span>1B+</span>
+        </div>
+    </div>
+
+    <script>
+        const width = 960, height = 600;
+        const projection = d3.geoMercator()
+                             .scale(150)
+                             .translate([width / 2, height / 1.5]);
+        const path = d3.geoPath().projection(projection);
+        const svg = d3.select("#map").append("svg")
+                      .attr("width", width)
+                      .attr("height", height);
+
+        const tooltip = d3.select(".tooltip");
+
+        Promise.all([
+            d3.json("countries.geo.json"),
+            d3.json("world_population_data.json")
+        ]).then(function(data) {
+            const geoData = data[0];
+            const popData = data[1];
+
+            geoData.features = geoData.features.filter(feature => feature.properties.name !== "Bermuda");
+
+            const populationByCountry = {};
+            popData.forEach(d => {
+                populationByCountry[d['Country Code']] = d;
+            });
+
+            const getColor = (countryCode, year) => {
+                if (populationByCountry[countryCode] && populationByCountry[countryCode][year]) {
+                    const population = populationByCountry[countryCode][year];
+                    return d3.scaleThreshold()
+                             .domain([10000000, 50000000, 100000000, 200000000, 500000000, 1000000000])
+                             .range(["#f7fbff", "#deebf7", "#c6dbef", "#9ecae1", "#6baed6", "#4292c6", "#2171b5"])
+                             (population);
+                }
+                return "#cccccc"; 
+            };
+
+            let currentYear = "2000";
+
+            svg.selectAll("path")
+               .data(geoData.features)
+               .enter()
+               .append("path")
+               .attr("d", path)
+               .attr("fill", d => getColor(d.id, currentYear))
+               .on("mouseover", function(event, d) {
+                   tooltip.transition().duration(200).style("opacity", .9);
+                   tooltip.html(d.properties.name + "<br/>" + "Population: " +
+                                (populationByCountry[d.id][currentYear] || "No data"))
+                          .style("left", (event.pageX + 10) + "px")
+                          .style("top", (event.pageY - 28) + "px");
+               })
+               .on("mouseout", function() {
+                   tooltip.transition().duration(500).style("opacity", 0);
+               });
+
+            const slider = d3.select("#year-slider")
+                             .on("input", function() {
+                                 currentYear = this.value;
+                                 d3.select("#year-display").text(currentYear);
+                                 svg.selectAll("path")
+                                    .attr("fill", d => getColor(d.id, currentYear));
+                             });
+        });
+    </script>
+</body>
+</html>

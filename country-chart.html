@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Population change from 1960 to 2020</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+
+        .chart-container {
+            width: 800px;
+            margin: 0 auto;
+        }
+
+        .tooltip {
+            position: absolute;
+            text-align: center;
+            width: auto;
+            height: auto;
+            padding: 8px;
+            background: lightgrey;
+            border-radius: 4px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        svg {
+            font: 10px sans-serif;
+        }
+
+        .axis-label {
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .line {
+            fill: none;
+            stroke: steelblue;
+            stroke-width: 2px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="chart-container">
+    <h2>Population change from 1960 to 2020</h2>
+    <select id="country-select"></select>
+    <svg id="line-chart" width="800" height="500"></svg>
+</div>
+
+<script>
+    // Postavke za margine i dimenzije grafikona
+    const margin = { top: 20, right: 30, bottom: 50, left: 60 },
+          width = 800 - margin.left - margin.right,
+          height = 500 - margin.top - margin.bottom;
+
+    const svg = d3.select("#line-chart")
+                  .attr("width", width + margin.left + margin.right)
+                  .attr("height", height + margin.top + margin.bottom)
+                  .append("g")
+                  .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    // Skale za X i Y os
+    const x = d3.scaleLinear()
+                .domain([1960, 2020])
+                .range([0, width]);
+
+    const y = d3.scaleLinear()
+                .range([height, 0]);
+
+    // Funkcija za dodavanje X i Y osi
+    const xAxis = svg.append("g")
+                     .attr("transform", `translate(0,${height})`)
+                     .call(d3.axisBottom(x).tickFormat(d3.format("d")));
+
+    const yAxis = svg.append("g");
+
+    // Tooltip
+    const tooltip = d3.select("body").append("div")
+                      .attr("class", "tooltip");
+
+    // Dodaj X i Y oznake
+    svg.append("text")
+       .attr("class", "axis-label")
+       .attr("x", width / 2)
+       .attr("y", height + margin.bottom - 10)
+       .attr("text-anchor", "middle")
+       .text("Year");
+
+    svg.append("text")
+       .attr("class", "axis-label")
+       .attr("x", -height / 2)
+       .attr("y", -margin.left + 70)
+       .attr("text-anchor", "middle")
+       .attr("transform", "rotate(-90)")
+       .text("Population");
+
+    // Učitavanje podataka
+    Promise.all([
+        d3.json("countries.geo.json"),
+        d3.json("world_population_data.json")
+    ]).then(function(data) {
+        const geoData = data[0];  // Podaci o zemljama
+        const popData = data[1];  // Podaci o populaciji
+
+        // Popuni padajući izbornik zemljama
+        const countrySelect = d3.select("#country-select");
+        geoData.features.forEach(feature => {
+            countrySelect.append("option")
+                         .text(feature.properties.name)
+                         .attr("value", feature.id);
+        });
+
+        // Funkcija za ažuriranje grafikona
+        function updateChart(selectedCountry) {
+            const countryData = popData.find(d => d['Country Code'] === selectedCountry);
+
+            if (!countryData) {
+                alert("Population data not available for selected country.");
+                return;
+            }
+
+            const populationData = [];
+            for (let year = 1960; year <= 2020; year++) {
+                if (countryData[year]) {
+                    populationData.push({ year: year, population: +countryData[year] });
+                }
+            }
+
+            // Ažuriranje Y skale
+            y.domain([0, d3.max(populationData, d => d.population)]);
+            yAxis.call(d3.axisLeft(y));
+
+            // Crtanje linije
+            const line = d3.line()
+                           .x(d => x(d.year))
+                           .y(d => y(d.population));
+
+            const path = svg.selectAll(".line")
+                            .data([populationData]);
+
+            path.enter()
+                .append("path")
+                .attr("class", "line")
+                .merge(path)
+                .attr("d", line);
+
+            path.exit().remove();
+
+            // Dodaj krugove za svaku točku na liniji i interakciju s tooltip-om
+            const circles = svg.selectAll("circle")
+                               .data(populationData);
+
+            circles.enter()
+                   .append("circle")
+                   .attr("r", 4)
+                   .merge(circles)
+                   .attr("cx", d => x(d.year))
+                   .attr("cy", d => y(d.population))
+                   .attr("fill", "steelblue")
+                   .on("mouseover", function(event, d) {
+                       tooltip.transition().duration(200).style("opacity", 0.9);
+                       tooltip.html(`Year: ${d.year}<br>Population: ${d.population.toLocaleString()}`)
+                              .style("left", (event.pageX + 5) + "px")
+                              .style("top", (event.pageY - 28) + "px");
+                   })
+                   .on("mouseout", function() {
+                       tooltip.transition().duration(500).style("opacity", 0);
+                   });
+
+            circles.exit().remove();
+        }
+
+        // Dodaj funkciju za ažuriranje grafikona kad se promijeni zemlja
+        countrySelect.on("change", function() {
+            const selectedCountry = d3.select(this).property("value");
+            updateChart(selectedCountry);
+        });
+
+        // Inicijalni prikaz za prvu zemlju
+        updateChart(geoData.features[0].id);
+    }).catch(function(error) {
+        console.error("Error loading data:", error);
+    });
+</script>
+
+</body>
+</html>

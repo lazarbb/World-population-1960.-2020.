@@ -1,0 +1,140 @@
+<div>
+    <h2>Compare Two Countries</h2>
+    <label for="year-slider">Select Year: <span id="year-display">2000</span></label>
+    <input type="range" id="year-slider" min="1960" max="2020" value="2000" step="1">
+    
+    <select id="country1-select"></select>
+    <select id="country2-select"></select>
+    <button id="compare-btn">Compare</button>
+</div>
+
+<!-- Div za prikaz bar chart-a -->
+<div id="barchart-container">
+    <h3>Population Comparison</h3>
+    <svg id="barchart" width="600" height="450"></svg>
+</div>
+
+<!-- Dodaj stilove za tooltip -->
+<style>
+    .tooltip {
+        position: absolute;
+        text-align: center;
+        width: auto;
+        height: auto;
+        padding: 8px;
+        background: lightgrey;
+        border-radius: 4px;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.3s;
+    }
+</style>
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+    let currentYear = 2000;
+
+    // Funkcija za ažuriranje prikazane godine
+    document.getElementById('year-slider').oninput = function() {
+        currentYear = this.value;
+        document.getElementById('year-display').innerHTML = currentYear;
+    };
+
+    // Učitavanje podataka
+    Promise.all([
+        d3.json("countries.geo.json"),
+        d3.json("world_population_data.json")
+    ]).then(function(data) {
+        const geoData = data[0];  // GeoJSON podaci o granicama zemalja
+        const popData = data[1];  // Podaci o populaciji
+
+        // Popuni padajuće izbornike sa zemljama
+        const country1Select = d3.select("#country1-select");
+        const country2Select = d3.select("#country2-select");
+
+        geoData.features.forEach(feature => {
+            country1Select.append("option").text(feature.properties.name).attr("value", feature.id);
+            country2Select.append("option").text(feature.properties.name).attr("value", feature.id);
+        });
+
+        // Funkcija za prikaz usporedbe
+        d3.select("#compare-btn").on("click", function() {
+            const country1 = d3.select("#country1-select").node().value;
+            const country2 = d3.select("#country2-select").node().value;
+
+            // Pronađi podatke za odabrane zemlje i godinu
+            const country1Data = popData.find(d => d['Country Code'] === country1);
+            const country2Data = popData.find(d => d['Country Code'] === country2);
+
+            const country1Pop = country1Data ? country1Data[currentYear] || "No data" : "No data";
+            const country2Pop = country2Data ? country2Data[currentYear] || "No data" : "No data";
+
+            // Ako nisu dostupni podaci za države
+            if (country1Pop === "No data" || country2Pop === "No data") {
+                alert("Population data not available for selected countries in this year.");
+                return;
+            }
+
+            // Prikaz bar chart-a
+            const svg = d3.select("#barchart");
+            svg.selectAll("*").remove();  // Očisti prethodni chart
+
+            const margin = { top: 20, right: 30, bottom: 60, left: 70 },
+                  width = 600 - margin.left - margin.right,
+                  height = 450 - margin.top - margin.bottom;
+
+            const chart = svg.append("g")
+                             .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            const data = [
+                {country: country1Data["Country Name"], population: +country1Pop},
+                {country: country2Data["Country Name"], population: +country2Pop}
+            ];
+
+            const x = d3.scaleBand()
+                        .domain(data.map(d => d.country))
+                        .range([0, width])
+                        .padding(0.1);
+
+            const y = d3.scaleLinear()
+                        .domain([0, d3.max(data, d => d.population)])
+                        .range([height, 0]);
+
+            // Dodaj X os
+            chart.append("g")
+                 .attr("transform", `translate(0,${height})`)
+                 .call(d3.axisBottom(x));
+
+            // Dodaj Y os sa skalom
+            chart.append("g")
+                 .call(d3.axisLeft(y).ticks(5).tickFormat(d3.format(".0s"))); // Koristi formatiranje za prikaz u skali (milioni, milijarde, itd.)
+
+            // Tooltip div
+            const tooltip = d3.select("body").append("div")
+                              .attr("class", "tooltip");
+
+            // Dodaj barove s interaktivnim tooltip-om
+            chart.selectAll(".bar")
+                 .data(data)
+                 .enter()
+                 .append("rect")
+                 .attr("class", "bar")
+                 .attr("x", d => x(d.country))
+                 .attr("width", x.bandwidth())
+                 .attr("y", d => y(d.population))
+                 .attr("height", d => height - y(d.population))
+                 .attr("fill", "steelblue")
+                 .on("mouseover", function(event, d) {
+                    tooltip.transition().duration(200).style("opacity", 0.9);
+                    tooltip.html(`${d.country}: ${d.population.toLocaleString()}`)
+                           .style("left", (event.pageX + 5) + "px")
+                           .style("top", (event.pageY - 28) + "px");
+                 })
+                 .on("mouseout", function() {
+                    tooltip.transition().duration(500).style("opacity", 0);
+                 });
+        });
+    }).catch(function(error) {
+        console.error("Error loading data:", error);
+    });
+</script>
